@@ -1,0 +1,51 @@
+name: Flask CI/CD
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+  pull-requests: write
+
+jobs:
+  test:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          C:\Users\HP\AppData\Local\Programs\Python\Python312\python.exe -m pip install -r requirements.txt
+        shell: cmd
+
+      - name: Run Healing Test
+        run: |
+          C:\Users\HP\AppData\Local\Programs\Python\Python312\python.exe -m pytest test_healing.py
+        shell: cmd
+
+  self-healing:
+    runs-on: self-hosted
+    needs: test
+    if: failure()
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Healer Dependencies
+        run: |
+          C:\Users\HP\AppData\Local\Programs\Python\Python312\python.exe -m pip install google-generativeai requests
+        shell: cmd
+
+      - name: Run Gemini Healer
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          C:\Users\HP\AppData\Local\Programs\Python\Python312\python.exe .github/scripts/healer.py
+        shell: cmd
