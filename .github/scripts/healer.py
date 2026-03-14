@@ -41,20 +41,46 @@ def get_failed_logs():
             
     return failed_job_logs
 
-def get_codebase():
-    codebase = {}
-    ignored_dirs = {'.git', 'Images', 'static', 'templates', '__pycache__', '.github'}
+import re
+
+def get_codebase(logs):
+    # Find potential filenames in the logs using regex
+    # Matches strings that look like python filenames (e.g., test_file.py or path/to/file.py)
+    potential_files = re.findall(r'([a-zA-Z0-9_\-/]+\.py)', logs)
+    # Remove duplicates and normalize paths
+    potential_files = list(set(os.path.normpath(f) for f in potential_files))
     
-    for root, dirs, files in os.walk('.'):
-        dirs[:] = [d for d in dirs if d not in ignored_dirs]
-        for file in files:
-            file_path = os.path.join(root, file)
-            if file.endswith(('.py', '.txt', '.yaml', '.yml', '.md', '.html')):
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        codebase[file_path] = f.read()
-                except Exception as e:
-                    print(f"Could not read {file_path}: {e}", flush=True)
+    codebase = {}
+    found_files = []
+    
+    print(f"Analyzing logs to find relevant Python files. Potential matches: {len(potential_files)}", flush=True)
+    
+    for file_path in potential_files:
+        if os.path.isfile(file_path) and file_path.endswith('.py'):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    codebase[file_path] = f.read()
+                    found_files.append(file_path)
+            except Exception as e:
+                print(f"Could not read detected file {file_path}: {e}", flush=True)
+    
+    # If no files were found in logs, fall back to reading all .py files in the codebase
+    if not codebase:
+        print("No specific Python files detected in logs. Falling back to full .py scan...", flush=True)
+        ignored_dirs = {'.git', 'Images', 'static', 'templates', '__pycache__', '.github'}
+        for root, dirs, files in os.walk('.'):
+            dirs[:] = [d for d in dirs if d not in ignored_dirs]
+            for file in files:
+                file_path = os.path.join(root, file)
+                if file.endswith('.py'):
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            codebase[file_path] = f.read()
+                    except Exception as e:
+                        pass
+    else:
+        print(f"Sending {len(found_files)} relevant Python files to Gemini: {', '.join(found_files)}", flush=True)
+        
     return codebase
 
 def apply_fix(filename, new_content):
@@ -68,7 +94,7 @@ def heal():
         print("No failed job logs found.", flush=True)
         return
 
-    codebase = get_codebase()
+    codebase = get_codebase(logs)
     
     prompt = f"""
 I am a CI/CD self-healing agent. A deployment recently failed.
