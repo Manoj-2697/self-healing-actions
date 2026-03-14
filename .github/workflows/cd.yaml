@@ -1,4 +1,4 @@
-name: Flask CI/CD
+name: Self-Healing-Deployment-using-Gemini
 
 on:
   push:
@@ -17,14 +17,20 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Install dependencies
         run: |
-          C:\Users\HP\AppData\Local\Programs\Python\Python312\python.exe -m pip install -r requirements.txt
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
         shell: cmd
 
-      - name: Run Healing Test
+      - name: Run Healing Test (Python)
         run: |
-          C:\Users\HP\AppData\Local\Programs\Python\Python312\python.exe -m pytest test_healing.py
+          python -m pytest test_healing.py
         shell: cmd
 
   self-healing:
@@ -37,9 +43,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Install Healer Dependencies
         run: |
-          C:\Users\HP\AppData\Local\Programs\Python\Python312\python.exe -m pip install google-generativeai requests
+          python -m pip install google-generativeai requests
         shell: cmd
 
       - name: Run Gemini Healer
@@ -47,5 +58,5 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          C:\Users\HP\AppData\Local\Programs\Python\Python312\python.exe .github/scripts/healer.py
+          python .github/scripts/healer.py
         shell: cmd
