@@ -13,7 +13,7 @@ def load_data():
     }
     df = pd.DataFrame(data)
     
-    # Intentional BUG: Accessing non-existent column
-    print(f"Total Employees: {len(df['employee_id'])}")
+    # Fixed: Changed 'employee_id' to 'emp_id' to match the data dictionary keys
+    print(f"Total Employees: {len(df['emp_id'])}")
     
     return df
