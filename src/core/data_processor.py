@@ -8,8 +8,7 @@ def process_salaries(df):
     """
     print("Calculating average salary...")
     
-    # Fixed: Cast the 'salary' column to numeric to handle string values before calculating the mean
-    df['salary'] = pd.to_numeric(df['salary'])
+    # Intentional BUG: Mean on un-cast string/object column
     avg_salary = df['salary'].mean()
     
     print(f"Average Salary: {avg_salary}")

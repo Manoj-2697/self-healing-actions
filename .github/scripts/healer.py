@@ -113,9 +113,10 @@ Analyze these specific errors and the modified files. Suggest a fix.
 Your response MUST be a JSON object:
 {{
   "analysis": "failure reason",
-  "fixes": [ {{ "filename": "path", "content": "full content" }} ]
+  "fixes": [ {{ "filename": "path", "content": "full content" }} ],
+  "insufficient_context": false 
 }}
-Only return JSON.
+If you cannot find the fix because some files are missing, set 'insufficient_context' to true.
 """
     
     print("Asking Gemini for a fix...", flush=True)
