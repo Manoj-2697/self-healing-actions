@@ -16,4 +16,4 @@ def load_data():
     # Fixed: Accessing the correct column 'emp_id'
     print(f"Total Employees: {len(df['emp_id'])}")
     
-    return dfs
+    return df
