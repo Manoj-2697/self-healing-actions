@@ -13,7 +13,7 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
 REPO = os.getenv('GITHUB_REPOSITORY')
 RUN_ID = os.getenv('GITHUB_RUN_ID')
-RETRY_BRANCH = os.getenv('GITHUB_REF_NAME')
+RETRY_BRANCH = os.getenv('GITHUB_REF_NAME') # e.g. 'main', 'master', or 'gemini-fix-...'
 
 if not GEMINI_API_KEY:
     print("Error: No GEMINI_API_KEY provided.", flush=True)
@@ -52,31 +52,62 @@ def get_failed_logs():
             
     return error_context
 
-def get_codebase():
-    print("Identifying Python files in feature branch changes...", flush=True)
-    changed_py_files = []
+def get_codebase(logs):
+    """
+    Identifies Python files related to the failure.
+    Priority:
+    1. Python files mentioned in the error logs (Tracebacks).
+    2. Python files changed in the current branch compared to default branch.
+    3. If on default branch, Python files changed in the latest commit.
+    """
+    print(f"Identifying Python files for context (Current branch: {RETRY_BRANCH})...", flush=True)
+    potential_files = set()
+    
+    # 1. Identify files from logs (Crucial if the bug is in a file NOT changed recently)
+    log_candidates = re.findall(r'([a-zA-Z0-9_\-/]+\.py)', logs)
+    for f in log_candidates:
+        potential_files.add(f)
+
+    # 2. Identify files changed in this branch
     try:
-        # Detect base branch
+        # Detect default branch (main/master)
         remotes = subprocess.check_output(['git', 'remote', 'show', 'origin'], text=True)
         default_branch = "main" if "HEAD branch: main" in remotes else "master"
         
-        # Get changed files
-        git_diff_cmd = ['git', 'diff', f'origin/{default_branch}...HEAD', '--name-only']
-        files = subprocess.check_output(git_diff_cmd, text=True, stderr=subprocess.STDOUT).splitlines()
+        diff_base = f"origin/{default_branch}"
         
-        for f in files:
-            rel_path = os.path.relpath(os.path.normpath(f), os.getcwd())
-            if os.path.isfile(rel_path) and rel_path.endswith('.py') and not rel_path.startswith('.github'):
-                changed_py_files.append(rel_path)
-        
-        changed_py_files = sorted(list(set(changed_py_files)))
-        print(f"Verified {len(changed_py_files)} changed Python files: {', '.join(changed_py_files)}", flush=True)
-        
+        # Scenario A: If we are ON the default branch, compare vs the previous commit
+        # Scenario B: If we are on a feature branch, compare vs the default branch
+        if RETRY_BRANCH == default_branch:
+            print(f"Workflow triggered on the base branch ({default_branch}). Analyzing latest commit changes...", flush=True)
+            git_diff_cmd = ['git', 'diff', 'HEAD~1...HEAD', '--name-only']
+        else:
+            print(f"Workflow triggered on feature branch. Analyzing changes vs {diff_base}...", flush=True)
+            git_diff_cmd = ['git', 'diff', f'{diff_base}...HEAD', '--name-only']
+            
+        branch_files = subprocess.check_output(git_diff_cmd, text=True, stderr=subprocess.STDOUT).splitlines()
+        for f in branch_files:
+            potential_files.add(f)
+            
     except Exception as e:
-        print(f"Error identifying changed files: {e}", flush=True)
+        print(f"Diff Analysis Note: {e}. Falling back to latest commit scan.", flush=True)
+        try:
+            fallback = subprocess.check_output(['git', 'show', '--name-only', '--format=', 'HEAD'], text=True).splitlines()
+            for f in fallback: potential_files.add(f)
+        except: pass
+
+    # 3. Filter and Clean
+    cleaned_py_files = []
+    for f in potential_files:
+        rel_path = os.path.relpath(os.path.normpath(f), os.getcwd())
+        if os.path.isfile(rel_path) and rel_path.endswith('.py') and not rel_path.startswith('.github'):
+            cleaned_py_files.append(rel_path)
+            
+    cleaned_py_files = sorted(list(set(cleaned_py_files)))
+    print(f"Identified {len(cleaned_py_files)} context files: {', '.join(cleaned_py_files)}", flush=True)
 
     codebase = {}
-    for f in changed_py_files:
+    for f in cleaned_py_files:
         try:
             with open(f, 'r', encoding='utf-8') as src:
                 codebase[f] = src.read()
@@ -95,9 +126,10 @@ def heal():
         print("No failed job context found.", flush=True)
         return
 
-    codebase = get_codebase()
+    # User's request: Identify and send Python files that are part of the changes + error logs
+    codebase = get_codebase(logs)
     if not codebase:
-        print("No changed Python files identified to send for context.", flush=True)
+        print("No related Python files identified. AI cannot heal without code context.", flush=True)
         return
 
     prompt = f"""
@@ -106,17 +138,16 @@ I am a CI/CD self-healing agent. A deployment recently failed with the following
 --- EXTRACTED ERROR LOGS ---
 {logs}
 
---- CHANGED CODEBASE ---
+--- RELATED CODEBASE ---
 {json.dumps(codebase, indent=2)}
 
-Analyze these specific errors and the modified files. Suggest a fix.
+Analyze these specific errors and the files provided. Suggest a fix.
 Your response MUST be a JSON object:
 {{
   "analysis": "failure reason",
-  "fixes": [ {{ "filename": "path", "content": "full content" }} ],
-  "insufficient_context": false 
+  "fixes": [ {{ "filename": "path", "content": "full content" }} ]
 }}
-If you cannot find the fix because some files are missing, set 'insufficient_context' to true.
+Only return JSON.
 """
     
     print("Asking Gemini for a fix...", flush=True)
@@ -132,9 +163,12 @@ If you cannot find the fix because some files are missing, set 'insufficient_con
         print(f"\n--- AI ANALYSIS ---\n{analysis}\n------------------\n", flush=True)
         
         fixes = fix_data.get('fixes', [])
-        if not fixes: print("No fix found.", flush=True); return
+        if not fixes:
+            print("No fix found.", flush=True)
+            return
 
-        for fix in fixes: apply_fix(fix['filename'], fix['content'])
+        for fix in fixes:
+            apply_fix(fix['filename'], fix['content'])
             
         print("--- CHANGES APPLIED (DIFF) ---", flush=True)
         os.system('git diff')
@@ -147,30 +181,25 @@ If you cannot find the fix because some files are missing, set 'insufficient_con
         os.system('git config user.email "healer@gemini.ai"')
         os.system('git add .')
         
+        # Tag the commit so finalize_pr.py can find the original branch to raise the PR against
         analysis_tag = f"[ANALYSIS]: {analysis}\n[ORIGINAL_BRANCH]: {RETRY_BRANCH}"
         os.system(f'git commit -m "Auto-fix by Gemini for run #{RUN_ID}\n\n{analysis_tag}"')
         
-        # DIAGNOSTIC: Check for HEALER_PAT presence and legitimacy
+        # Authentication & Push
         pat_token = os.getenv('HEALER_PAT')
         if not pat_token or not pat_token.startswith('ghp_'):
-            print("--- CRITICAL WARNING ---", flush=True)
-            print("HEALER_PAT NOT FOUND OR INVALID. Using GITHUB_TOKEN (will NOT trigger next workflow).", flush=True)
-            print("Ensure secret 'HEALER_PAT' is correctly added to your new repo.", flush=True)
+            print("--- CRITICAL WARNING: HEALER_PAT NOT FOUND OR INVALID ---", flush=True)
             push_token = GITHUB_TOKEN
         else:
-            print(f"Using HEALER_PAT (Token prefix: {pat_token[:4]}****) for push...", flush=True)
+            print(f"Using HEALER_PAT for push...", flush=True)
             push_token = pat_token
 
-        # Unset the automatic runner auth header to force the use of our PAT in the remote URL
         os.system('git config --local --unset-all http.https://github.com/.extraheader')
-        
         remote_url = f"https://x-access-token:{push_token}@github.com/{REPO}.git"
         push_res = os.system(f'git push --set-upstream {remote_url} {fix_branch}')
         
         if push_res == 0:
-            print(f"Fix successfully pushed! Checking trigger status.", flush=True)
-        else:
-            print(f"Push failed with code {push_res}.", flush=True)
+            print(f"Fix successfully pushed! A new PR will be raised against '{RETRY_BRANCH}' upon verification.", flush=True)
         
     except Exception as e:
         print(f"Error in healing: {e}", flush=True)
