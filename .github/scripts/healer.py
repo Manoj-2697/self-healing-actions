@@ -194,14 +194,7 @@ If you cannot find the fix because some files are missing, set 'insufficient_con
         push_res = os.system(f'git push {remote_url} {fix_branch}')
         
         if push_res == 0:
-            print(f"Fix pushed! Triggering verification signals...", flush=True)
-            headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
-            requests.post(f"https://api.github.com/repos/{REPO}/dispatches", 
-                          headers=headers, 
-                          json={"event_type": "verify-fix", "client_payload": {"branch": fix_branch}})
-            requests.post(f"https://api.github.com/repos/{REPO}/actions/workflows/cd.yaml/dispatches", 
-                          headers=headers, 
-                          json={"ref": fix_branch})
+            print(f"Fix successfully pushed to {fix_branch}! The pipeline will now trigger automatically.", flush=True)
         
     except Exception as e:
         print(f"Error in healing: {e}", flush=True)
