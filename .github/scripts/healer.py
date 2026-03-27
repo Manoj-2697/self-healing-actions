@@ -13,7 +13,7 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
 REPO = os.getenv('GITHUB_REPOSITORY')
 RUN_ID = os.getenv('GITHUB_RUN_ID')
-RETRY_BRANCH = os.getenv('GITHUB_REF_NAME') # e.g. 'main', 'master', or 'gemini-fix-...'
+RETRY_BRANCH = os.getenv('GITHUB_REF_NAME')
 
 if not GEMINI_API_KEY:
     print("Error: No GEMINI_API_KEY provided.", flush=True)
@@ -23,7 +23,7 @@ genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-3-flash-preview')
 
 def get_failed_logs():
-    print(f"Fetching and parsing logs for run {RUN_ID} (extracting error blocks)...", flush=True)
+    print(f"Grepping logs for run {RUN_ID} (extracting error messages only)...", flush=True)
     headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
     jobs_url = f"https://api.github.com/repos/{REPO}/actions/runs/{RUN_ID}/jobs"
     response = requests.get(jobs_url, headers=headers)
@@ -37,66 +37,52 @@ def get_failed_logs():
             log_response = requests.get(log_url, headers=headers)
             full_logs = log_response.text
             
+            # GREG ERROR MESSAGE Strategy: Capture Tracebacks and explicit Exception lines
             tracebacks = re.findall(r'Traceback \(most recent call last\):.*?(?:\r?\n.*?)+?(?=\r?\n\r?\n|\Z)', full_logs, re.DOTALL)
             assertions = re.findall(r'(_+ [^_]+ _+|E   .*|AssertionError:.*)', full_logs)
+            generic_errors = re.findall(r'(\w+Error:.*|\w+Exception:.*)', full_logs)
             
-            error_context += f"\n--- Error Blocks found in Job: {job['name']} ---\n"
+            error_context += f"\n--- Error Block Job: {job['name']} ---\n"
             if tracebacks:
                 error_context += "\n--- Tracebacks ---\n" + "\n".join(tracebacks)
-            if assertions:
-                error_context += "\n--- Assertions/Summary ---\n" + "\n".join(assertions)
+            if assertions or generic_errors:
+                error_context += "\n--- Error Messages ---\n" + "\n".join(set(assertions + generic_errors))
             
-            if not tracebacks and not assertions:
+            if not error_context:
                 lines = full_logs.splitlines()
-                error_context += "\n--- Last 50 lines (No pattern match) ---\n" + "\n".join(lines[-50:])
+                error_context += "\n--- Last 30 lines ---\n" + "\n".join(lines[-30:])
             
     return error_context
 
 def get_codebase(logs):
-    """
-    Identifies Python files related to the failure.
-    Priority:
-    1. Python files mentioned in the error logs (Tracebacks).
-    2. Python files changed in the current branch compared to default branch.
-    3. If on default branch, Python files changed in the latest commit.
-    """
-    print(f"Identifying Python files for context (Current branch: {RETRY_BRANCH})...", flush=True)
+    print(f"Identifying related Python files (Branch: {RETRY_BRANCH})...", flush=True)
     potential_files = set()
     
-    # 1. Identify files from logs (Crucial if the bug is in a file NOT changed recently)
+    # 1. Grab files from log tracebacks
     log_candidates = re.findall(r'([a-zA-Z0-9_\-/]+\.py)', logs)
-    for f in log_candidates:
-        potential_files.add(f)
+    for f in log_candidates: potential_files.add(f)
 
-    # 2. Identify files changed in this branch
+    # 2. Grab files from git changes
     try:
-        # Detect default branch (main/master)
         remotes = subprocess.check_output(['git', 'remote', 'show', 'origin'], text=True)
         default_branch = "main" if "HEAD branch: main" in remotes else "master"
         
-        diff_base = f"origin/{default_branch}"
-        
-        # Scenario A: If we are ON the default branch, compare vs the previous commit
-        # Scenario B: If we are on a feature branch, compare vs the default branch
+        # Scenario: If we are already on a fix branch, compare vs the original base (detected from commit history or default)
+        # But for logic simplicity: if on main/master, compare vs HEAD~1. Else, compare vs default.
         if RETRY_BRANCH == default_branch:
-            print(f"Workflow triggered on the base branch ({default_branch}). Analyzing latest commit changes...", flush=True)
             git_diff_cmd = ['git', 'diff', 'HEAD~1...HEAD', '--name-only']
         else:
-            print(f"Workflow triggered on feature branch. Analyzing changes vs {diff_base}...", flush=True)
-            git_diff_cmd = ['git', 'diff', f'{diff_base}...HEAD', '--name-only']
+            git_diff_cmd = ['git', 'diff', f'origin/{default_branch}...HEAD', '--name-only']
             
         branch_files = subprocess.check_output(git_diff_cmd, text=True, stderr=subprocess.STDOUT).splitlines()
-        for f in branch_files:
-            potential_files.add(f)
+        for f in branch_files: potential_files.add(f)
             
-    except Exception as e:
-        print(f"Diff Analysis Note: {e}. Falling back to latest commit scan.", flush=True)
+    except:
         try:
             fallback = subprocess.check_output(['git', 'show', '--name-only', '--format=', 'HEAD'], text=True).splitlines()
             for f in fallback: potential_files.add(f)
         except: pass
 
-    # 3. Filter and Clean
     cleaned_py_files = []
     for f in potential_files:
         rel_path = os.path.relpath(os.path.normpath(f), os.getcwd())
@@ -104,15 +90,13 @@ def get_codebase(logs):
             cleaned_py_files.append(rel_path)
             
     cleaned_py_files = sorted(list(set(cleaned_py_files)))
-    print(f"Identified {len(cleaned_py_files)} context files: {', '.join(cleaned_py_files)}", flush=True)
+    print(f"Sharing {len(cleaned_py_files)} files with Gemini: {', '.join(cleaned_py_files)}", flush=True)
 
     codebase = {}
     for f in cleaned_py_files:
         try:
-            with open(f, 'r', encoding='utf-8') as src:
-                codebase[f] = src.read()
+            with open(f, 'r', encoding='utf-8') as src: codebase[f] = src.read()
         except: pass
-        
     return codebase
 
 def apply_fix(filename, new_content):
@@ -122,33 +106,12 @@ def apply_fix(filename, new_content):
 
 def heal():
     logs = get_failed_logs()
-    if not logs:
-        print("No failed job context found.", flush=True)
-        return
-
-    # User's request: Identify and send Python files that are part of the changes + error logs
+    if not logs: return
+    
     codebase = get_codebase(logs)
-    if not codebase:
-        print("No related Python files identified. AI cannot heal without code context.", flush=True)
-        return
+    if not codebase: return
 
-    prompt = f"""
-I am a CI/CD self-healing agent. A deployment recently failed with the following errors:
-
---- EXTRACTED ERROR LOGS ---
-{logs}
-
---- RELATED CODEBASE ---
-{json.dumps(codebase, indent=2)}
-
-Analyze these specific errors and the files provided. Suggest a fix.
-Your response MUST be a JSON object:
-{{
-  "analysis": "failure reason",
-  "fixes": [ {{ "filename": "path", "content": "full content" }} ]
-}}
-Only return JSON.
-"""
+    prompt = f"Failure errors:\n{logs}\n\nCode context:\n{json.dumps(codebase, indent=2)}\n\nSuggest a fix. Return JSON: {{'analysis': '...', 'fixes': [{{'filename': '...', 'content': '...'}}]}}"
     
     print("Asking Gemini for a fix...", flush=True)
     response = model.generate_content(prompt)
@@ -163,43 +126,42 @@ Only return JSON.
         print(f"\n--- AI ANALYSIS ---\n{analysis}\n------------------\n", flush=True)
         
         fixes = fix_data.get('fixes', [])
-        if not fixes:
-            print("No fix found.", flush=True)
-            return
+        if not fixes: return
 
-        for fix in fixes:
-            apply_fix(fix['filename'], fix['content'])
+        for fix in fixes: apply_fix(fix['filename'], fix['content'])
             
         print("--- CHANGES APPLIED (DIFF) ---", flush=True)
         os.system('git diff')
         print("-------------------------------", flush=True)
 
-        fix_branch = f"gemini-fix-{int(time.time())}"
-        print(f"Pushing fix to branch: {fix_branch}...", flush=True)
-        os.system(f'git checkout -b {fix_branch}')
+        # BRANCH LOGIC: Reuse existing gemini-fix branch if we are currently on one
+        if RETRY_BRANCH.startswith("gemini-fix-"):
+            fix_branch = RETRY_BRANCH
+            print(f"Continuing work on existing fix branch: {fix_branch}", flush=True)
+        else:
+            fix_branch = f"gemini-fix-{int(time.time())}"
+            print(f"Creating new fix branch: {fix_branch}", flush=True)
+            os.system(f'git checkout -b {fix_branch}')
+
         os.system('git config user.name "Gemini Healer"')
         os.system('git config user.email "healer@gemini.ai"')
         os.system('git add .')
         
-        # Tag the commit so finalize_pr.py can find the original branch to raise the PR against
-        analysis_tag = f"[ANALYSIS]: {analysis}\n[ORIGINAL_BRANCH]: {RETRY_BRANCH}"
-        os.system(f'git commit -m "Auto-fix by Gemini for run #{RUN_ID}\n\n{analysis_tag}"')
+        # Pass the original branch name in the metadata so we know where to merge eventually
+        orig_branch = RETRY_BRANCH if not RETRY_BRANCH.startswith("gemini-fix-") else "main" # logic fallback
+        analysis_tag = f"[ANALYSIS]: {analysis}\n[ORIGINAL_BRANCH]: {orig_branch}"
+        os.system(f'git commit -m "Auto-fix cycle for run #{RUN_ID}\n\n{analysis_tag}"')
         
-        # Authentication & Push
         pat_token = os.getenv('HEALER_PAT')
-        if not pat_token or not pat_token.startswith('ghp_'):
-            print("--- CRITICAL WARNING: HEALER_PAT NOT FOUND OR INVALID ---", flush=True)
-            push_token = GITHUB_TOKEN
-        else:
-            print(f"Using HEALER_PAT for push...", flush=True)
-            push_token = pat_token
+        push_token = pat_token if (pat_token and pat_token.startswith('ghp_')) else GITHUB_TOKEN
 
         os.system('git config --local --unset-all http.https://github.com/.extraheader')
         remote_url = f"https://x-access-token:{push_token}@github.com/{REPO}.git"
-        push_res = os.system(f'git push --set-upstream {remote_url} {fix_branch}')
         
+        # Pushing to the same branch (will trigger a NEW run if HEALER_PAT is used)
+        push_res = os.system(f'git push --set-upstream {remote_url} {fix_branch}')
         if push_res == 0:
-            print(f"Fix successfully pushed! A new PR will be raised against '{RETRY_BRANCH}' upon verification.", flush=True)
+            print(f"Fix updated on {fix_branch}. Verification run triggered.", flush=True)
         
     except Exception as e:
         print(f"Error in healing: {e}", flush=True)
