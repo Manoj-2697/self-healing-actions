@@ -2,14 +2,13 @@ import pandas as pd
 
 def process_salaries(df):
     """
-    Simulated data processor with a BUG:
-    It will fail because one of the 'salary' values is a string ('7000'), 
-    but it's trying to calculate a mean without casting.
+    Simulated data processor:
+    Fixed by casting the 'salary' column to numeric before calculating the mean.
     """
     print("Calculating average salary...")
     
-    # Intentional BUG: Mean on un-cast string/object column
-    avg_salary = df['salary'].mean()
+    # Convert column to numeric to handle mixed types (e.g., strings like '7000')
+    avg_salary = pd.to_numeric(df['salary']).mean()
     
     print(f"Average Salary: {avg_salary}")
     
