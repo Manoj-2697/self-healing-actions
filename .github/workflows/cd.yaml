@@ -25,9 +25,6 @@ jobs:
 
   self-healing:
     needs: [ python-tests, aws-deployment ]
-    # Trigger ONLY IF:
-    # 1. Tests or deployment failed
-    # 2. AND the failure was NOT due to a credential issue
     if: |
       always() &&
       (needs.python-tests.result == 'failure' || needs.aws-deployment.result == 'failure') &&
