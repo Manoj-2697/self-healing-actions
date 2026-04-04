@@ -12,7 +12,7 @@ import subprocess
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
 REPO = os.getenv('GITHUB_REPOSITORY')
-RUN_ID = os.getenv('GITHUB_RUN_ID')
+RUN_ID = os.getenv('FAILED_RUN_ID') or os.getenv('GITHUB_RUN_ID')
 RETRY_BRANCH = os.getenv('GITHUB_REF_NAME')
 
 if not GEMINI_API_KEY:
@@ -41,10 +41,13 @@ def get_failed_logs():
             tracebacks = re.findall(r'Traceback \(most recent call last\):.*?(?:\r?\n.*?)+?(?=\r?\n\r?\n|\Z)', full_logs, re.DOTALL)
             assertions = re.findall(r'(_+ [^_]+ _+|E   .*|AssertionError:.*)', full_logs)
             generic_errors = re.findall(r'(\w+Error:.*|\w+Exception:.*)', full_logs)
+            tf_errors = re.findall(r'(│ Error:.*?(?:\r?\n.*?)+?(?=\r?\n\r?\n|╵))', full_logs, re.DOTALL)
             
             error_context += f"\n--- Error Block Job: {job['name']} ---\n"
             if tracebacks:
                 error_context += "\n--- Tracebacks ---\n" + "\n".join(tracebacks)
+            if tf_errors:
+                error_context += "\n--- Terraform Errors ---\n" + "\n".join(tf_errors)
             if assertions or generic_errors:
                 error_context += "\n--- Error Messages ---\n" + "\n".join(set(assertions + generic_errors))
             
@@ -86,7 +89,7 @@ def get_codebase(logs):
     cleaned_py_files = []
     for f in potential_files:
         rel_path = os.path.relpath(os.path.normpath(f), os.getcwd())
-        if os.path.isfile(rel_path) and rel_path.endswith('.py') and not rel_path.startswith('.github'):
+        if os.path.isfile(rel_path) and (rel_path.endswith('.py') or rel_path.endswith('.tf')) and not rel_path.startswith('.github'):
             cleaned_py_files.append(rel_path)
             
     cleaned_py_files = sorted(list(set(cleaned_py_files)))
