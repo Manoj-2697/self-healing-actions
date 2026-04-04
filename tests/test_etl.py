@@ -6,8 +6,8 @@ from src.core.data_processor import process_salaries
 def test_data_loader():
     df = load_data()
     assert isinstance(df, pd.DataFrame)
-    # The intentional bug: expecting 'employee_id'
-    assert 'employee_id' in df.columns
+    # Fixed: data_loader.py uses 'emp_id' for the employee identifier
+    assert 'emp_id' in df.columns
 
 def test_data_processor():
     data = {
