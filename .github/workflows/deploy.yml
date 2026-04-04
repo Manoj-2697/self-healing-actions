@@ -1,0 +1,5 @@
+# Instructions for Environment Variables:
+# 1. Go to your Repository Settings -> Secrets and Variables -> Actions.
+# 2. Update AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.
+# 3. Ensure no trailing spaces or newlines are included in the values.
+# 4. If using a temporary session, ensure AWS_SESSION_TOKEN is also provided.
