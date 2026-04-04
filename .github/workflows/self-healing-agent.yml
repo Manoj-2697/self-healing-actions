@@ -32,12 +32,19 @@ jobs:
         run: |
           python -m pip install google-generativeai requests pandas
 
+      - name: Pre-Heal Environment Check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FAILED_RUN_ID: ${{ github.run_id }}
+        run: |
+          python .github/scripts/env_checker.py
+
       - name: Gemini AI Healing Loop
+        # This only runs if the check above PASSED (exited 0)
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEALER_PAT: ${{ secrets.HEALER_PAT }}
-          # In workflow_call, GITHUB_RUN_ID is already the current run ID
           FAILED_RUN_ID: ${{ github.run_id }}
         run: |
           python .github/scripts/healer.py
