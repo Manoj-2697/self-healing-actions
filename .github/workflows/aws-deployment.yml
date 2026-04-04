@@ -10,6 +10,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Sync System Clock (Prevent Signature Skew)
+        run: |
+          sudo apt-get install -y ntpdate 2>/dev/null || true
+          sudo ntpdate -u pool.ntp.org || sudo timedatectl set-ntp true
+          echo "Current time: $(date -u)"
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
