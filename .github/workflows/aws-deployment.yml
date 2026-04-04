@@ -7,6 +7,9 @@ on:
         description: "True if the job failed due to AWS credential validation"
         value: ${{ jobs.validate-credentials.outputs.credentials_failed }}
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  # Fix: suppress Node.js 20 deprecation warning
+
 jobs:
   validate-credentials:
     name: Validate AWS Credentials
@@ -57,8 +60,14 @@ jobs:
             exit 1
           fi
 
-          # Double-check with a live STS call
-          if aws sts get-caller-identity; then
+          # Double-check with a live STS call. Redirect output to suppress account ID from logs.
+          STS_OUTPUT=$(aws sts get-caller-identity 2>&1)
+          if [ $? -eq 0 ]; then
+            # Mask the account ID before printing anything
+            ACCOUNT_ID=$(echo "$STS_OUTPUT" | python3 -c "import sys,json; print(json.load(sys.stdin)['Account'])" 2>/dev/null)
+            if [ -n "$ACCOUNT_ID" ]; then
+              echo "::add-mask::$ACCOUNT_ID"
+            fi
             echo "✅ Credentials are VALID."
             echo "credentials_failed=false" >> $GITHUB_OUTPUT
           else
