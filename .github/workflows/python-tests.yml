@@ -1,10 +1,7 @@
-name: Python Tests
+name: Python Tests (Core)
 
 on:
-  push:
-    branches: [ master, 'gemini-fix-*' ]
-  pull_request:
-    branches: [ master ]
+  workflow_call:
 
 env:
   PYTHONPATH: src
