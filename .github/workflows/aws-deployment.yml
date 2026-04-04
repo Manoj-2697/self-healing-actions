@@ -2,14 +2,18 @@ name: AWS Deployment (Core)
 
 on:
   workflow_call:
+    outputs:
+      credentials_failed:
+        description: "True if the job failed due to AWS credential validation"
+        value: ${{ jobs.validate-credentials.outputs.credentials_failed }}
 
 jobs:
-  deploy:
-    name: Terraform Deploy
+  validate-credentials:
+    name: Validate AWS Credentials
     runs-on: ubuntu-latest
+    outputs:
+      credentials_failed: ${{ steps.cred_check.outputs.credentials_failed }}
     steps:
-      - uses: actions/checkout@v4
-
       - name: Sync System Clock (Prevent Signature Skew)
         run: |
           sudo apt-get install -y ntpdate 2>/dev/null || true
@@ -17,11 +21,41 @@ jobs:
           echo "Current time: $(date -u)"
 
       - name: Configure AWS Credentials
+        id: configure_aws
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }} # Optional, will work if empty
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Validate AWS Credentials
+        id: cred_check
+        run: |
+          if aws sts get-caller-identity; then
+            echo "✅ Credentials are VALID."
+            echo "credentials_failed=false" >> $GITHUB_OUTPUT
+          else
+            echo "❌ CREDENTIAL VALIDATION FAILED. Stopping deployment."
+            echo "credentials_failed=true" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+  deploy:
+    name: Terraform Deploy
+    runs-on: ubuntu-latest
+    needs: [ validate-credentials ]
+    # Only run if credentials are confirmed valid
+    if: needs.validate-credentials.outputs.credentials_failed == 'false'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Setup Terraform

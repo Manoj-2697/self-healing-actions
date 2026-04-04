@@ -19,15 +19,19 @@ jobs:
 
   aws-deployment:
     needs: [ python-tests ]
-    # Explicitly only run if tests succeeded
     if: success()
     uses: ./.github/workflows/aws-deployment.yml
     secrets: inherit
 
   self-healing:
     needs: [ python-tests, aws-deployment ]
-    # Trigger if EITHER test or deployment fails
-    if: always() && (needs.python-tests.result == 'failure' || needs.aws-deployment.result == 'failure')
+    # Trigger ONLY IF:
+    # 1. Tests or deployment failed
+    # 2. AND the failure was NOT due to a credential issue
+    if: |
+      always() &&
+      (needs.python-tests.result == 'failure' || needs.aws-deployment.result == 'failure') &&
+      needs.aws-deployment.outputs.credentials_failed != 'true'
     uses: ./.github/workflows/self-healing-agent.yml
     with:
       branch: ${{ github.ref_name || github.head_ref }}
