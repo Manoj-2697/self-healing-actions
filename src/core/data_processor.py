@@ -2,14 +2,8 @@ import pandas as pd
 
 def process_salaries(df):
     """
-    Simulated data processor:
-    Fixed by casting the 'salary' column to numeric before calculating the mean.
+    Calculates the average salary from the provided DataFrame.
     """
-    print("Calculating average salary...")
-    
-    # Convert column to numeric to handle mixed types (e.g., strings like '7000')
-    avg_salary = pd.to_numeric(df['salary']).mean()
-    
-    print(f"Average Salary: {avg_salary}")
-    
-    return avg_salary
+    if df is None or df.empty or 'salary' not in df.columns:
+        return 0
+    return df['salary'].mean()
