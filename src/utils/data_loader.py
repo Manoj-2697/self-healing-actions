@@ -1,19 +1,12 @@
 import pandas as pd
-import os
 
 def load_data():
     """
-    Simulated data loader with a BUG:
-    It expects 'employee_id' but the file will have 'emp_id'.
+    Returns a sample DataFrame for testing purposes.
     """
     data = {
-        'emp_id': [1, 2, 3, 4, 5],
-        'name': ['Alice', 'Bob', 'Charlie', 'David', 'Eve'],
-        'salary': [5000, 6000, '7000', 8000, 9000] # Note: one is a string
+        'emp_id': [1, 2, 3],
+        'name': ['Alice', 'Bob', 'Charlie'],
+        'salary': [5000, 6000, 7000]
     }
-    df = pd.DataFrame(data)
-    
-    # Fixed: Accessing the correct column name 'emp_id'
-    print(f"Total Employees: {len(df['emp_id'])}")
-    
-    return df
+    return pd.DataFrame(data)
