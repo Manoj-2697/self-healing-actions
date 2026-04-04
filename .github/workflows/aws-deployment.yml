@@ -98,7 +98,9 @@ jobs:
         run: terraform plan -out=tfplan
 
       - name: Terraform Apply
-        if: github.ref == 'refs/heads/master'
+        if: |
+          github.ref == 'refs/heads/master' ||
+          github.ref == 'refs/heads/test-branch'
         working-directory: terraform
         env:
           TF_VAR_aws_region: ${{ secrets.AWS_REGION }}
