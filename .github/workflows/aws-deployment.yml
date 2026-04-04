@@ -14,11 +14,28 @@ jobs:
     outputs:
       credentials_failed: ${{ steps.cred_check.outputs.credentials_failed }}
     steps:
-      - name: Sync System Clock (Prevent Signature Skew)
+      - name: Verify Required Secrets Are Present
+        env:
+          # Load secrets into env vars so we can check length without printing values.
+          # GitHub will automatically mask these in logs.
+          _KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          _SECRET: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          _REGION: ${{ secrets.AWS_REGION }}
         run: |
-          sudo apt-get install -y ntpdate 2>/dev/null || true
-          sudo ntpdate -u pool.ntp.org || sudo timedatectl set-ntp true
-          echo "Current time: $(date -u)"
+          MISSING=()
+          [ -z "$_KEY_ID" ]  && MISSING+=("AWS_ACCESS_KEY_ID")
+          [ -z "$_SECRET" ]  && MISSING+=("AWS_SECRET_ACCESS_KEY")
+          [ -z "$_REGION" ]  && MISSING+=("AWS_REGION")
+
+          if [ ${#MISSING[@]} -ne 0 ]; then
+            echo "❌ The following required secrets are NOT set in GitHub:"
+            for s in "${MISSING[@]}"; do echo "   - $s"; done
+            echo ""
+            echo "Go to: Settings → Secrets and variables → Actions → New repository secret"
+            exit 1
+          fi
+          echo "✅ All required secrets are present."
+
 
       - name: Configure AWS Credentials
         id: configure_aws
@@ -78,11 +95,11 @@ jobs:
         working-directory: terraform
         env:
           TF_VAR_aws_region: ${{ secrets.AWS_REGION }}
-        run: terraform plan
+        run: terraform plan -out=tfplan
 
       - name: Terraform Apply
         if: github.ref == 'refs/heads/master'
         working-directory: terraform
         env:
           TF_VAR_aws_region: ${{ secrets.AWS_REGION }}
-        run: terraform apply -auto-approve
+        run: terraform apply -auto-approve tfplan
