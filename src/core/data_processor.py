@@ -8,7 +8,8 @@ def process_salaries(df):
     print("Calculating average salary...")
     
     # Convert column to numeric to handle mixed types (e.g., strings like '7000')
-    avg_salary = pd.to_numeric(df['sal']).mean()
+    # Fixed: Changed column name from 'sal' to 'salary' to match test data
+    avg_salary = pd.to_numeric(df['salary']).mean()
     
     print(f"Average Salary: {avg_salary}")
     
