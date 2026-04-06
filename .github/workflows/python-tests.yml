@@ -1,0 +1,35 @@
+name: Python Tests (Core)
+
+on:
+  workflow_call:
+
+env:
+  PYTHONPATH: src
+
+jobs:
+  test:
+    name: Run Pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[test]"
+
+      - name: Run tests
+        run: pytest tests/
+
+      - name: Finalize Fix PR
+        if: startsWith(github.ref, 'refs/heads/gemini-fix-') && success()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "[Verification Success] Triggering PR creation..."
+          python .github/scripts/finalize_pr.py

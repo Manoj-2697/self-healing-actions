@@ -1,0 +1,59 @@
+name: Self Healing Agent (Core)
+
+on:
+  workflow_call:
+    inputs:
+      branch:
+        required: true
+        type: string
+      python_failed:
+        required: false
+        type: boolean
+        default: false
+      terraform_failed:
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  actions: read
+  pull-requests: write
+
+jobs:
+  heal:
+    name: AI Self-Correction Cycle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch repository context
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+
+      - name: Configure Healer Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install ".[ai]"
+
+      - name: Pre-Heal Environment Check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FAILED_RUN_ID: ${{ github.run_id }}
+        run: |
+          python .github/scripts/env_checker.py
+
+      - name: Gemini AI Healing Loop
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEALER_PAT: ${{ secrets.HEALER_PAT }}
+          FAILED_RUN_ID: ${{ github.run_id }}
+          PYTHON_FAILED: ${{ inputs.python_failed }}
+          TERRAFORM_FAILED: ${{ inputs.terraform_failed }}
+        run: |
+          python .github/scripts/healer.py

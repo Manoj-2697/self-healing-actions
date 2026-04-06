@@ -1,7 +1,7 @@
 # Archive the Lambda code
 data "archive_file" "lambda_zip" {
   type        = "zip"
-  source_file = "${path.module}/../src/lambda/index.py"
+  source_dir  = "${path.module}/../src"
   output_path = "${path.module}/lambda_function.zip"
 }
 
@@ -9,7 +9,7 @@ data "archive_file" "lambda_zip" {
 resource "aws_lambda_function" "etl_lambda" {
   function_name    = var.lambda_function_name
   role             = aws_iam_role.lambda_exec_role.arn
-  handler          = "index.handler"
+  handler          = "lambda/index.handler"
   runtime          = "python3.12"
   filename         = data.archive_file.lambda_zip.output_path
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256

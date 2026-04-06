@@ -1,0 +1,31 @@
+[project]
+name = "self-healing-etl-demo"
+version = "1.0.0"
+description = "AI-Driven ETL Self-Healing Automation"
+
+# Zero base dependencies to ensure absolute isolation
+dependencies = []
+
+[project.optional-dependencies]
+# Dependencies for the ETL code itself
+etl = [
+    "pandas",
+    "openpyxl"
+]
+
+# Dependencies for running tests (requires the ETL logic to be testable)
+test = [
+    "pytest",
+    "pandas",
+    "openpyxl"
+]
+
+# Dependencies for the AI Healing Agent
+ai = [
+    "google-generativeai",
+    "requests"
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
