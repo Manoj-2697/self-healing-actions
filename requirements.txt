@@ -1,6 +1,0 @@
-Flask
-pytest
-pandas
-openpyxl
-requests
-google-generativeai
