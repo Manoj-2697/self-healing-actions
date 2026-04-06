@@ -1,0 +1,16 @@
+Metadata-Version: 2.4
+Name: self-healing-etl-demo
+Version: 1.0.0
+Summary: AI-Driven ETL Self-Healing Automation
+License-File: LICENSE
+Provides-Extra: etl
+Requires-Dist: pandas; extra == "etl"
+Requires-Dist: openpyxl; extra == "etl"
+Provides-Extra: test
+Requires-Dist: pytest; extra == "test"
+Requires-Dist: pandas; extra == "test"
+Requires-Dist: openpyxl; extra == "test"
+Provides-Extra: ai
+Requires-Dist: google-generativeai; extra == "ai"
+Requires-Dist: requests; extra == "ai"
+Dynamic: license-file

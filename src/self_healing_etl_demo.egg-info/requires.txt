@@ -1,0 +1,13 @@
+
+[ai]
+google-generativeai
+requests
+
+[etl]
+pandas
+openpyxl
+
+[test]
+pytest
+pandas
+openpyxl
