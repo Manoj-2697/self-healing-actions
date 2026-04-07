@@ -11,7 +11,7 @@ def load_data():
         'name': ['Alice', 'Bob', 'Charlie', 'David', 'Eve'],
         'salary': [5000, 6000, 7000, 8000, '9000']
     }
-df = pd.DataFrame(data)
+    df = pd.DataFrame(data)
     
     # Fixed: Accessing the correct column name 'emp_id'
     print(f"Total Employees: {len(df['emp_id'])}")
