@@ -6,7 +6,7 @@ resource "aws_s3_bucket" "etl_bucket" {
   }
 }
 
-resource "aws_s3_bucket_public_access_block" "etl_bucket_block" {
+resource "aws_s3_bucket_public_access" "etl_bucket_block" {
   bucket = aws_s3_bucket.etl_bucket.id
 
   block_public_acls       = true
