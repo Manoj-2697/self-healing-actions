@@ -1,0 +1,14 @@
+LICENSE
+pyproject.toml
+src/__init__.py
+src/core/__init__.py
+src/core/data_processor.py
+src/lambda/index.py
+src/self_healing_etl_demo.egg-info/PKG-INFO
+src/self_healing_etl_demo.egg-info/SOURCES.txt
+src/self_healing_etl_demo.egg-info/dependency_links.txt
+src/self_healing_etl_demo.egg-info/requires.txt
+src/self_healing_etl_demo.egg-info/top_level.txt
+src/utils/__init__.py
+src/utils/data_loader.py
+tests/test_etl.py
